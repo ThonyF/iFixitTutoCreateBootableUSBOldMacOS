@@ -73,9 +73,15 @@ function isSupportedPlatform(){
 					return false;
 				}
 				
-				if (system.compareVersions(system.version.ProductVersion, '10.7') &lt; 0 &amp;&amp; system.env.COMMAND_LINE_INSTALL) {
-					my.result.message = system.localizedStringWithFormat('IC_Command_Line_message', '10.7');
+				if (system.compareVersions(system.version.ProductVersion, '10.8') &lt; 0 &amp;&amp; system.env.COMMAND_LINE_INSTALL) {
+					my.result.message = system.localizedStringWithFormat('IC_Command_Line_message', '10.8');
 					my.result.type = 'Fatal';
+					return false;
+				}
+				
+				if( system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') &gt;= 0 &amp;&amp;  system.compareVersions(my.target.systemVersion.ProductVersion, '10.9') &lt; 0){			
+					my.result.message = system.localizedStringWithFormat('IC_Redownload_message', system.version.ProductVersion);
+					my.result.type = 'Warn';
 					return false;
 				}
 				
@@ -93,20 +99,15 @@ function isSupportedPlatform(){
 		var target = my.target;
 		var destSystemVersion = target['systemVersion'];
 
-    	if(my.target.systemVersion){
-        if( (system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') == -1) &amp;&amp; (system.compareVersions(my.target.systemVersion.ProductVersion, '10.7') &gt;= 0 ) ){
-            my.result.message = system.localizedString('VC_Redownload_Lion');
-            my.result.type = 'Warn';
-            return false;
-        }
-        if( system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') &gt;= 0){      
-          my.result.message = system.localizedString('VC_ML_Installed');
-          my.result.type = 'Warn';
-          return false;
-        }
-  		}
+  	if(my.target.systemVersion){
+      if( system.compareVersions(my.target.systemVersion.ProductVersion, '10.9') &gt;= 0){      
+        my.result.message = system.localizedString('VC_NEXTOS_Installed');
+        my.result.type = 'Warn';
+        return false;
+      }
+		}
 		
-		var requiredDiskSpace = 4730359249;		
+		var requiredDiskSpace = 4456641381;		
 		var actualDiskSpace = my.target.availableBytes;
 		
 		if(actualDiskSpace &lt; requiredDiskSpace ){
@@ -126,6 +127,13 @@ function isSupportedPlatform(){
 				my.result.type = 'Fatal';
 				return false;
 			}	
+		}
+		
+		// installable only on mountpoint
+		if (!(my.target.mountpoint == '/'))
+		{
+			my.result.type = 'Fatal';
+			return false;
 		}
 		
 		return true;
@@ -204,13 +212,6 @@ function isSupportedPlatform(){
 		return upgradable;
 	}
 
-	function isServer(){
-		if(!my.target['systemVersion'].isServer){  
-			return false;
-		}
-		return true;
-	}
-
 	function systemHasDVD(){
 		var obj = system.ioregistry.matchingClass("IODVDBlockStorageDriver");
 		if (obj) {
@@ -234,16 +235,29 @@ function isSupportedPlatform(){
 		return false;
 	}
 
+	function needsX11redirect() {
+			var sysVer = my.target['systemVersion'];
+			if (!sysVer) {
+				return true;
+			}
+			var path = my.target.mountpoint + "/private/var/db/receipts/com.apple.pkg.X11redirect.plist";
+		    if (system.files.fileExistsAtPath(path) || system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') &lt; 0) {
+				return true;
+			}
+
+			return false;
+		}
+
 
 
 	</script>
 
 		<installation-check script="installCheckScript()"/>
 		<volume-check script="volCheckScript()">
-		      <allowed-os-versions>
-		            <os-version min="10.6.6"/>
-		      </allowed-os-versions>
-		 </volume-check>
+			<allowed-os-versions>
+				<os-version min="10.6.8"/>
+			</allowed-os-versions>
+		</volume-check>
 	<choices-outline>
         <line choice="default">
             <line choice="com.apple.pkg.InstallMacOSX"/>
@@ -255,7 +269,7 @@ function isSupportedPlatform(){
 		<pkg-ref id="com.apple.pkg.InstallMacOSX">#InstallMacOSX.pkg</pkg-ref>
     </choice>
 
-	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='24500' version='6.0.1.1306847324'/>
+	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='22096' version='6.0.1.1306847324'/>
 
-	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='24500' version='6.0.1.1306847324'/>
+	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='22096' version='6.0.1.1306847324'/>
 </installer-gui-script>

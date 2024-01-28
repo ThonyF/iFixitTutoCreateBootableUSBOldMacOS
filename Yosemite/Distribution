@@ -1,10 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <installer-gui-script minSpecVersion="2">
     <title>MacOSX_Title</title>
     <product id="com.apple.installassistant" version="6.0"/>
-	<options allow-external-scripts='yes' require-scripts="true" customize="never" hostArchitectures="x86_64,i386" launch="true" />	
-	
-	<script>
+    <options allow-external-scripts="yes" require-scripts="true" customize="never" hostArchitectures="x86_64,i386" launch="true"/>
+    <script>
 	 	var minRam = 2048;
 	function checkSupportedMachine(machineType) {
 	return true;
@@ -62,7 +61,11 @@ function isSupportedPlatform(){
 				}
 				
 				if(!isSupportedPlatform()){
-					my.result.message = system.localizedStringWithFormat('IC_Unsupported_Platform');
+                    if (system.compareVersions(system.version.ProductVersion, '10.10') &gt;= 0 &amp;&amp; system.compareVersions(system.version.ProductVersion, '10.11') &lt; 0) {
+                        my.result.message = system.localizedStringWithFormat('IC_cpusw_flavor');
+                    } else {
+                        my.result.message = system.localizedStringWithFormat('IC_Unsupported_Platform');
+                    }
 					my.result.type = 'Fatal';
 					return false;
 				}
@@ -73,13 +76,8 @@ function isSupportedPlatform(){
 					return false;
 				}
 				
-				if (system.compareVersions(system.version.ProductVersion, '10.7') &lt; 0 &amp;&amp; system.env.COMMAND_LINE_INSTALL) {
-					my.result.message = system.localizedStringWithFormat('IC_Command_Line_message', '10.7');
-					my.result.type = 'Fatal';
-					return false;
-				}
-				
-				if (typeof(findBJPrinters) != "undefined") findBJPrinters();
+				if (typeof(redownloadCheck) != "undefined" &amp;&amp; !redownloadCheck()) return false;
+				if (typeof(findBJPrinters) != "undefined" &amp;&amp; !findBJPrinters) return false;
 				
 			} catch (e) {
 				system.log('installCheckScript threw exception ' + e);
@@ -89,24 +87,35 @@ function isSupportedPlatform(){
 	}
 
 
-	function volCheckScript(){
-		var target = my.target;
-		var destSystemVersion = target['systemVersion'];
-
-    	if(my.target.systemVersion){
-        if( (system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') == -1) &amp;&amp; (system.compareVersions(my.target.systemVersion.ProductVersion, '10.7') &gt;= 0 ) ){
-            my.result.message = system.localizedString('VC_Redownload_Lion');
+    function redownloadCheck() {
+        if( system.compareVersions(system.version.ProductVersion, '10.10') &gt;= 0 &amp;&amp;  system.compareVersions(system.version.ProductVersion, '10.11') &lt; 0){
+            my.result.message = system.localizedStringWithFormat('IC_Redownload_message', system.version.ProductVersion);
             my.result.type = 'Warn';
             return false;
         }
-        if( system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') &gt;= 0){      
-          my.result.message = system.localizedString('VC_ML_Installed');
-          my.result.type = 'Warn';
-          return false;
-        }
-  		}
-		
-		var requiredDiskSpace = 4730359249;		
+        return true;
+    }
+
+	function volCheckScript(){
+		var target = my.target;
+		var destSystemVersion = target['systemVersion'];
+   if(my.target.systemVersion){
+       if( system.compareVersions(my.target.systemVersion.ProductVersion, '10.11') &gt;= 0){      
+        my.result.message = system.localizedString('VC_NEXTOS_Installed');
+        my.result.type = 'Warn';
+        return false;
+      }
+		}
+
+        try {
+            if (false) {
+                my.result.message = system.localizedString('VC_Managed_Policy');
+                my.result.type = 'Fatal';
+                return false;
+            }
+        } catch(e) {}
+
+		var requiredDiskSpace = 5721008492;		
 		var actualDiskSpace = my.target.availableBytes;
 		
 		if(actualDiskSpace &lt; requiredDiskSpace ){
@@ -116,16 +125,12 @@ function isSupportedPlatform(){
 			my.result.type = 'Fatal';
 			return false;
 		}
-	
-		//FDE CHECKS
-		var plist = system.files.plistAtPath('/System/Library/Extensions/CoreStorage.kext/Contents/Info.plist');
-		if(plist){
-			var plistKeyValue = plist['CoreStorageDiskFormatVersion'];
-			if((system.ioregistry.matchingClass('CoreStorageGroup').length != 0) &amp;&amp; (system.compareVersions(plistKeyValue, '1') != 0) ){
-				my.result.message = system.localizedString('CS_message');
-				my.result.type = 'Fatal';
-				return false;
-			}	
+		
+		// installable only on mountpoint
+		if (!(my.target.mountpoint == '/'))
+		{
+			my.result.type = 'Fatal';
+			return false;
 		}
 		
 		return true;
@@ -192,7 +197,7 @@ function isSupportedPlatform(){
 		var upgradable = true;
 		var upgradeAction = my.choice.packageUpgradeAction;
 		
-		if(argv.length > 0) { 
+		if(argv.length &gt; 0) { 
 			upgradeAction = eval('choices.' + argv[0] + '.packageUpgradeAction');	
 		}
 		
@@ -202,13 +207,6 @@ function isSupportedPlatform(){
 		}
 		
 		return upgradable;
-	}
-
-	function isServer(){
-		if(!my.target['systemVersion'].isServer){  
-			return false;
-		}
-		return true;
 	}
 
 	function systemHasDVD(){
@@ -234,28 +232,36 @@ function isSupportedPlatform(){
 		return false;
 	}
 
+	function needsX11redirect() {
+			var sysVer = my.target['systemVersion'];
+			if (!sysVer) {
+				return true;
+			}
+			var path = my.target.mountpoint + "/private/var/db/receipts/com.apple.pkg.X11redirect.plist";
+		    if (system.files.fileExistsAtPath(path) || system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') &lt; 0) {
+				return true;
+			}
+
+			return false;
+		}
+
 
 
 	</script>
-
-		<installation-check script="installCheckScript()"/>
-		<volume-check script="volCheckScript()">
-		      <allowed-os-versions>
-		            <os-version min="10.6.6"/>
-		      </allowed-os-versions>
-		 </volume-check>
-	<choices-outline>
+    <installation-check script="installCheckScript()"/>
+    <volume-check script="volCheckScript()">
+        <allowed-os-versions>
+            <os-version min="10.6.8"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
         <line choice="default">
             <line choice="com.apple.pkg.InstallMacOSX"/>
         </line>
     </choices-outline>
-
     <choice id="default" title="MacOSX_Title" versStr="6.0"/>
-    <choice id="com.apple.pkg.InstallMacOSX" visible="false" customLocation = '/Applications/'>
-		<pkg-ref id="com.apple.pkg.InstallMacOSX">#InstallMacOSX.pkg</pkg-ref>
+    <choice id="com.apple.pkg.InstallMacOSX" visible="false" customLocation="/Applications/">
+        <pkg-ref id="com.apple.pkg.InstallMacOSX">#InstallMacOSX.pkg</pkg-ref>
     </choice>
-
-	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='24500' version='6.0.1.1306847324'/>
-
-	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='24500' version='6.0.1.1306847324'/>
+    <pkg-ref id="com.apple.pkg.InstallMacOSX" installKBytes="5814" version="6.0.1.1425657145"/>
 </installer-gui-script>
