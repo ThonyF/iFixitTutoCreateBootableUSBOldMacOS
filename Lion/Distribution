@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>MacOSX_Title</title>
+    <product id="com.apple.installassistant" version="6.0"/>
+	<options allow-external-scripts='yes' require-scripts="true" customize="never" hostArchitectures="x86_64,i386" launch="true" />	
+	
+	<script>
+	 	var minRam = 2048;
+	function checkSupportedMachine(machineType) {
+	return true;
+}
+
+function checkSupportedBootRom(machineType) {
+	return true;
+}
+
+function hasAtLeastRam(RAM) {
+	var requiredRAM = (RAM * 1024 * 1024);
+	var actualRAM = system.sysctl('hw.memsize');
+	return (actualRAM &gt; (requiredRAM - 1));
+}
+
+function is64bit() {
+    var is64bit =system.sysctl('hw.cpu64bit_capable');
+	return is64bit;
+}
+
+function isVirtualMachine(){
+	
+	var cpuFeatures = system.sysctl( 'machdep.cpu.features' );
+			cpuFeatures=cpuFeatures.split(" ");
+			for( var i = 0; i &lt; cpuFeatures.length; i++ ){
+			 	if( cpuFeatures[i] == "VMM" ){
+						return true;
+			  	}	
+			}
+			return false;			
+			
+}
+
+function isSupportedPlatform(){
+	return true;
+}
+	
+	function installCheckScript(){
+			
+			try{
+				var machineType = system.ioregistry.fromPath('IODeviceTree:/')['compatible'];
+				
+				if (typeof(isFNI) == "undefined" &amp;&amp; typeof(hwbeInstallCheck) != "undefined") {
+					if (!hwbeInstallCheck()) {
+						return false;
+					}
+				} 
+				
+				if(!is64bit()){
+					my.result.message = system.localizedStringWithFormat('IC_Unsupported_Processor');
+					my.result.type = 'Fatal';
+					return false;
+				}
+				
+				if(!isSupportedPlatform()){
+					my.result.message = system.localizedStringWithFormat('IC_Unsupported_Platform');
+					my.result.type = 'Fatal';
+					return false;
+				}
+				
+				if(!hasAtLeastRam(minRam)){
+					my.result.message = system.localizedStringWithFormat('IC_RAM_message');
+					my.result.type = 'Fatal';
+					return false;
+				}
+				
+				if (system.compareVersions(system.version.ProductVersion, '10.7') &lt; 0 &amp;&amp; system.env.COMMAND_LINE_INSTALL) {
+					my.result.message = system.localizedStringWithFormat('IC_Command_Line_message', '10.7');
+					my.result.type = 'Fatal';
+					return false;
+				}
+				
+				if (typeof(findBJPrinters) != "undefined") findBJPrinters();
+				
+			} catch (e) {
+				system.log('installCheckScript threw exception ' + e);
+			}
+			
+			return true;
+	}
+
+
+	function volCheckScript(){
+		var target = my.target;
+		var destSystemVersion = target['systemVersion'];
+
+    	if(my.target.systemVersion){
+        if( (system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') == -1) &amp;&amp; (system.compareVersions(my.target.systemVersion.ProductVersion, '10.7') &gt;= 0 ) ){
+            my.result.message = system.localizedString('VC_Redownload_Lion');
+            my.result.type = 'Warn';
+            return false;
+        }
+        if( system.compareVersions(my.target.systemVersion.ProductVersion, '10.8') &gt;= 0){      
+          my.result.message = system.localizedString('VC_ML_Installed');
+          my.result.type = 'Warn';
+          return false;
+        }
+  		}
+		
+		var requiredDiskSpace = 4730359249;		
+		var actualDiskSpace = my.target.availableBytes;
+		
+		if(actualDiskSpace &lt; requiredDiskSpace ){
+			var spaceinGB = requiredDiskSpace/1073741824; 
+				spaceinGB = spaceinGB.toFixed(2);
+			my.result.message = system.localizedStringWithFormat('IC_Disk_Space_message',spaceinGB );
+			my.result.type = 'Fatal';
+			return false;
+		}
+	
+		//FDE CHECKS
+		var plist = system.files.plistAtPath('/System/Library/Extensions/CoreStorage.kext/Contents/Info.plist');
+		if(plist){
+			var plistKeyValue = plist['CoreStorageDiskFormatVersion'];
+			if((system.ioregistry.matchingClass('CoreStorageGroup').length != 0) &amp;&amp; (system.compareVersions(plistKeyValue, '1') != 0) ){
+				my.result.message = system.localizedString('CS_message');
+				my.result.type = 'Fatal';
+				return false;
+			}	
+		}
+		
+		return true;
+	}
+
+		
+	function language_running(langKey){
+		var appleLanguages = system.defaults['AppleLanguages'];
+	
+	
+		if(!appleLanguages || (appleLanguages.length == 0))
+				return ((langKey == 'English') || (langKey == 'en'))
+		
+		return (langKey == appleLanguages[0]);
+	}
+	
+	gLanguageRequired = {
+	};
+	
+	//Function returns true if the langKey is required, it uses a cache so that the logic doesn't
+	//have to be run hundreds of times
+	function language_required(langKey){
+		
+		if(! (gLanguageRequired[langKey])){
+			var required = false;
+			
+			if(language_running(langKey)){
+				required =  true;
+			}
+			
+			gLanguageRequired[langKey] = required;
+		}
+		
+		return gLanguageRequired[langKey];
+	}
+	
+	function language_enabled(langKey){
+		var enabled = !(language_required(langKey));
+		
+		if(false == enabled){
+			my.choice.tooltip = system.localizedString('TT_Language_Required_message');
+		}
+		
+		return enabled;
+	}
+	
+	function language_selected(langKey){
+		var selected = my.choice.selected || language_required(langKey);
+
+		return selected;
+	}
+		
+	
+	function verCompare(checkVer){
+		var sysVer = my.target['systemVersion'];
+		if (sysVer) {
+			return system.numericalCompare(sysVer['ProductVersion'],checkVer);
+		}
+		return -1;
+	}
+
+	function upgrade_allowed(){
+		var argv = upgrade_allowed.arguments;
+		var upgradable = true;
+		var upgradeAction = my.choice.packageUpgradeAction;
+		
+		if(argv.length > 0) { 
+			upgradeAction = eval('choices.' + argv[0] + '.packageUpgradeAction');	
+		}
+		
+		if((upgradeAction == 'downgrade') || (upgradeAction == 'mixed')){
+			my.choice.tooltip = system.localizedString('TT_Newer_Package_Installed_message');	
+			upgradable = false;
+		}
+		
+		return upgradable;
+	}
+
+	function isServer(){
+		if(!my.target['systemVersion'].isServer){  
+			return false;
+		}
+		return true;
+	}
+
+	function systemHasDVD(){
+		var obj = system.ioregistry.matchingClass("IODVDBlockStorageDriver");
+		if (obj) {
+			return true;
+		}
+		var obj2 = system.ioregistry.matchingName("ApplePlatformEnabler","IOService");
+		if (obj2 ) {
+			if ( obj2[0]['DVDSupported'] ) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	function hasNetInfo() {
+		var path = my.target.mountpoint + "/private/var/db/netinfo/local.nidb";
+	    if (system.files.fileExistsAtPath(path)) {
+			return true;
+		}
+		
+		return false;
+	}
+
+
+
+	</script>
+
+		<installation-check script="installCheckScript()"/>
+		<volume-check script="volCheckScript()">
+		      <allowed-os-versions>
+		            <os-version min="10.6.6"/>
+		      </allowed-os-versions>
+		 </volume-check>
+	<choices-outline>
+        <line choice="default">
+            <line choice="com.apple.pkg.InstallMacOSX"/>
+        </line>
+    </choices-outline>
+
+    <choice id="default" title="MacOSX_Title" versStr="6.0"/>
+    <choice id="com.apple.pkg.InstallMacOSX" visible="false" customLocation = '/Applications/'>
+		<pkg-ref id="com.apple.pkg.InstallMacOSX">#InstallMacOSX.pkg</pkg-ref>
+    </choice>
+
+	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='24500' version='6.0.1.1306847324'/>
+
+	<pkg-ref id='com.apple.pkg.InstallMacOSX' installKBytes='24500' version='6.0.1.1306847324'/>
+</installer-gui-script>
